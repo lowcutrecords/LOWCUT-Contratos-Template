@@ -1,0 +1,29 @@
+[hidden]{display:none!important}
+body,a,button,input,textarea,select,label{cursor:auto}.cursor{display:none}
+body.access-pending .hero,body.access-pending .shell,body.access-pending footer,body.access-pending #accountStrip,body.access-pending .progress-wrap,body.access-pending .progress-label{display:none!important}
+.access-gate{min-height:calc(100vh - 72px);display:grid;grid-template-columns:1.05fr .95fr}
+.access-copy{padding:clamp(36px,7vw,100px);display:flex;flex-direction:column;justify-content:center;border-right:1px solid #292929;background:#050505;color:#fff}
+.access-copy h1{font-size:clamp(56px,7vw,110px);line-height:.82;letter-spacing:-.065em;margin:16px 0 24px}
+.access-copy p{max-width:650px;color:#bdbdb8;line-height:1.6;font-size:16px}
+.access-copy .access-back{color:#bbb;text-decoration:none;font:700 11px 'Courier New',monospace;letter-spacing:1px;margin-top:24px;width:max-content;border-bottom:1px solid #555;padding-bottom:8px}
+.access-panel{background:#f1efe9;color:#111;display:grid;place-items:center;padding:30px}
+.access-card{width:min(520px,100%);background:#fff;border:1px solid #bbb;padding:clamp(24px,4vw,42px)}
+.access-logo{width:170px;display:block;margin:0 0 34px}
+.access-card h2{font-size:clamp(29px,3vw,38px);letter-spacing:-.04em;margin:20px 0 8px;line-height:1.05}
+.access-card p{color:#666;line-height:1.55;font-size:13px;margin:0 0 22px}
+.access-card .field label{font-size:10px;letter-spacing:1.2px}.access-card .field input{padding:14px 12px}
+.access-card .field input:focus{outline:2px solid #111;outline-offset:3px}
+.access-tabs{display:grid;grid-template-columns:1fr 1fr;border:1px solid #111;margin:22px 0 0}
+.access-tabs button{min-height:44px;padding:12px 8px;background:#fff;color:#666;border:0;font:700 10px 'Courier New',monospace;letter-spacing:1px;cursor:pointer}
+.access-tabs button[aria-selected=true]{background:#111;color:#fff}
+.access-button{width:100%;min-height:48px;display:flex;justify-content:center;align-items:center;text-align:center;text-decoration:none;border:1px solid #111;background:#111;color:#fff;padding:15px 12px;font:900 11px Arial,Helvetica,sans-serif;letter-spacing:1.2px;cursor:pointer;margin:12px 0 0}
+.access-button.secondary{background:#fff;color:#111}.access-button:disabled{opacity:.45;cursor:wait}
+.access-note{border:1px solid #ccc;background:#f7f6f2;padding:16px;margin:20px 0}.access-note p{margin:0}
+.access-identity{font:700 11px 'Courier New',monospace;word-break:break-word;border-bottom:1px solid #ddd;padding:0 0 16px;margin:0 0 20px!important;color:#111!important}
+.access-footer{margin-top:24px;padding-top:16px;border-top:1px solid #ddd;display:flex;gap:14px;flex-wrap:wrap}
+.access-link{padding:0;background:none;border:0;color:#555;text-decoration:underline;text-underline-offset:4px;font:700 10px 'Courier New',monospace;cursor:pointer;line-height:1.6}
+#accountMessage{font-size:12px;margin:18px 0 0;line-height:1.55;overflow-wrap:anywhere}
+.access-strip{max-width:1450px;margin:auto;padding:15px 26px;border-bottom:1px solid #333;display:flex;align-items:center;justify-content:space-between;gap:16px;color:#bbb;font-size:12px}
+.access-strip .access-link{color:#ddd}.access-strip-actions{display:flex;gap:18px;flex-wrap:wrap}.access-strip p{margin:0;line-height:1.5;overflow-wrap:anywhere}
+@media(max-width:950px){.access-gate{grid-template-columns:1fr}.access-copy{border-right:0;border-bottom:1px solid #292929;min-height:38vh}.access-panel{padding:24px 16px}.access-copy h1{font-size:clamp(56px,12vw,90px)}.access-strip{align-items:flex-start;flex-direction:column}}
+

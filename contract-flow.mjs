@@ -2,14 +2,33 @@ import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.12.5/firebase
 import {getAuth,createUserWithEmailAndPassword,signInWithEmailAndPassword,onAuthStateChanged,signOut,sendEmailVerification} from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js';
 import {getFirestore,doc,getDoc,runTransaction,serverTimestamp,onSnapshot} from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js';
 import {profileValues,profileDocuments,canSign} from './profile-model.mjs';
+import {registrationLink} from './invitation-link.mjs';
 const app=initializeApp({apiKey:'AIzaSyDcLpCPu-3eNKtd3j8w51RdiqCvP6L8WlU',authDomain:'lowcut-artist-portal.firebaseapp.com',projectId:'lowcut-artist-portal',appId:'1:483516737605:web:0dc3012d3e1db7db39db2c'});
 const auth=getAuth(app),db=getFirestore(app),$=id=>document.getElementById(id);
 const form=$('contractForm'),fields=$('contractFields'),msg=$('accountMessage');
 const contractId=new URLSearchParams(location.search).get('contract');
 const validId=contractId&&contractId.length<=200&&!contractId.includes('/');
 let loaded=null,profile=null,unsubscribe=()=>{},generation=0,busy=false;
+let accessMode='login';
 const defaults=new Map([...document.querySelectorAll('[data-contract-lang]')].map(el=>[el.dataset.contractLang,el.innerHTML]));
-function say(text){msg.textContent=text;}
+function say(text){msg.textContent=text;if(text&&!document.body.classList.contains('access-pending'))$('contractAccessStatus').textContent=text;}
+function accessHeading(title,intro){$('accessTitle').textContent=title;$('accessIntro').textContent=intro;}
+function gate(show){document.body.classList.toggle('access-pending',show);$('accountPanel').hidden=!show;$('accountStrip').hidden=show;}
+function mode(value){
+  accessMode=value;const register=value==='register',needsLink=register&&!validId;
+  $('accessLoginTab').setAttribute('aria-selected',String(!register));$('accessRegisterTab').setAttribute('aria-selected',String(register));
+  $('accountLogin').hidden=register;$('accountCreate').hidden=!register;
+  $('confirmPasswordField').hidden=!register||needsLink;$('accountPasswordConfirm').required=register&&!needsLink;
+  $('accountPassword').autocomplete=register?'new-password':'current-password';
+  $('accountCredentials').hidden=needsLink;$('accountEmail').required=!needsLink;$('accountPassword').required=!needsLink;
+  $('invitationField').hidden=!needsLink;$('invitationLink').required=needsLink;
+  $('accountEmail').disabled=needsLink;$('accountPassword').disabled=needsLink;
+  $('invitationLink').disabled=!needsLink;$('accountPasswordConfirm').disabled=!register||needsLink;
+  $('accountCreate').textContent=needsLink?'CONTINUAR CON MI INVITACIÓN':'CREAR MI CUENTA';
+  accessHeading(register?'CREAR CUENTA':'INICIAR SESIÓN',register?'La misma cuenta te dará acceso al portal y a tus contratos.':'Usá tu cuenta de LOWCUT// Records para continuar.');
+  say(needsLink?'El registro de artistas se habilita con una invitación individual.':'');
+}
+function showContract(text,editableProfile=false){gate(false);$('contractAccessStatus').textContent=text;$('editProfile').hidden=!editableProfile;}
 function error(e){console.error(e.code||e.message);say(e.code==='permission-denied'?'No hay permiso para esta invitación. Verificá el email de tu cuenta; si coincide, LOWCUT debe revisar las reglas de Firebase.':e.code?.startsWith('auth/')?'No se pudo completar el acceso. Revisá tus datos o volvé a iniciar sesión.':e.message||'No se pudo completar la operación.');}
 function resetAccess(){fields.disabled=true;profile=null;loaded=null;unsubscribe();unsubscribe=()=>{};}
 function prefill(p,a){
@@ -34,13 +53,15 @@ function renderSavedSignature(c){
   form.dispatchEvent(new Event('input',{bubbles:true}));
 }
 async function loadAccount(user){
-  const token=++generation;resetAccess();$('accountForm').hidden=!!user;$('profilePanel').hidden=!user;
-  if(!validId){say('Este enlace necesita una invitación. Pedile a LOWCUT el enlace de tu contrato.');return;}
-  if(!user){say('Iniciá sesión o creá tu cuenta para completar tu perfil.');return;}
+  const token=++generation;resetAccess();gate(true);$('accountForm').hidden=!!user;$('accessTabs').hidden=!!user;$('profilePanel').hidden=!user;$('accountLogout').hidden=!user;
+  $('verifyPanel').hidden=true;$('profileEditor').hidden=true;$('missingInvite').hidden=true;
+  if(!user){mode(new URLSearchParams(location.search).get('mode')==='register'?'register':'login');return;}
   $('accountIdentity').textContent=user.email||'';
+  if(!validId){accessHeading('TU CUENTA','Ya iniciaste sesión con tu cuenta de LOWCUT// Records.');$('missingInvite').hidden=false;say('Abrí un contrato desde el portal para continuar.');return;}
   $('accountVerify').hidden=user.emailVerified;$('accountRefresh').hidden=user.emailVerified;
   $('profileSave').disabled=!user.emailVerified;
-  if(!user.emailVerified){say('Verificá tu email y después tocá «Ya verifiqué mi email».');return;}
+  if(!user.emailVerified){accessHeading('VERIFICÁ TU EMAIL','Un paso más para acceder a tu contrato.');$('verifyPanel').hidden=false;say('Después de verificarlo, tocá «Ya verifiqué mi email».');return;}
+  accessHeading('CARGANDO TU ACCESO','Estamos comprobando tu perfil y tu contrato.');say('');
   try{
     const snap=await getDoc(doc(db,'contracts',contractId));if(token!==generation)return;
     if(!snap.exists())throw Error('La invitación no existe.');
@@ -52,30 +73,40 @@ async function loadAccount(user){
     let artist=null;
     if(profile?.artistId){const a=await getDoc(doc(db,'artists',profile.artistId));if(token!==generation)return;artist=a.exists()?a.data():null;if(artist?.active===false)throw Error('El perfil artístico está desactivado.');}
     if(!admin)prefill(profile||{},artist||{});renderContract(loaded);
-    if(loaded.status==='signed'){renderSavedSignature(loaded);say('CONTRATO FIRMADO · '+(loaded.signedAt||'')+' · '+(loaded.signature?.name||'Firma registrada')+'. Se muestra la aceptación guardada.');$('profileSave').disabled=true;return;}
-    if(admin){say('VISTA ADMIN · Contrato '+(loaded.active===false?'desactivado':'pendiente')+'. Modificalo desde Gestión de contratos en el portal.');$('profileSave').disabled=true;return;}
+    if(loaded.status==='signed'){renderSavedSignature(loaded);showContract('CONTRATO FIRMADO · '+(loaded.signedAt||'')+' · '+(loaded.signature?.name||'Firma registrada'));$('profileSave').disabled=true;return;}
+    if(admin){showContract('VISTA ADMIN · Contrato '+(loaded.active===false?'desactivado':'pendiente'));$('profileSave').disabled=true;return;}
     if(!canSign(loaded,user.uid,user.email))throw Error('La invitación está desactivada o corresponde a otra cuenta.');
     fields.disabled=!(profile&&artist?.active===true);
-    say(fields.disabled?'Completá y guardá tu perfil para habilitar el contrato.':'Perfil cargado. Podés corregir los datos del contrato antes de firmar.');
+    if(fields.disabled){accessHeading('COMPLETÁ TU PERFIL','Tu nombre artístico se completará en el contrato y en el portal.');$('profileEditor').hidden=false;say('Guardá tu perfil para continuar.');}
+    else showContract((artist.name||profile.name)+' · '+user.email,true);
     // Availability changes lock the form immediately. The transaction also checks at signing time.
     const seenRevision=loaded.pageRevision||1;
     unsubscribe=onSnapshot(doc(db,'contracts',contractId),s=>{
       if(token!==generation)return;
       const c=s.exists()?s.data():null;
-      if(!c||!canSign(c,user.uid,user.email)){fields.disabled=true;say(c?.status==='signed'?'La firma ya quedó registrada.':'La invitación ya no está disponible.');}
-      else if((c.pageRevision||1)!==seenRevision){fields.disabled=true;say('LOWCUT actualizó el texto. Recargá la página y revisalo antes de firmar.');}
+      if(!c||!canSign(c,user.uid,user.email)){fields.disabled=true;$('contractAccessStatus').textContent=c?.status==='signed'?'La firma ya quedó registrada.':'La invitación ya no está disponible.';}
+      else if((c.pageRevision||1)!==seenRevision){fields.disabled=true;$('contractAccessStatus').textContent='LOWCUT actualizó el texto. Recargá la página y revisalo antes de firmar.';}
     },e=>{fields.disabled=true;error(e);});
-  }catch(e){fields.disabled=true;$('profileSave').disabled=true;error(e);}
+  }catch(e){fields.disabled=true;$('profileSave').disabled=true;accessHeading('REVISÁ TU ACCESO','Este contrato necesita una cuenta autorizada por LOWCUT.');error(e);}
 }
 onAuthStateChanged(auth,loadAccount);
-$('accountForm').addEventListener('submit',async e=>{e.preventDefault();if(busy)return;busy=true;try{await signInWithEmailAndPassword(auth,$('accountEmail').value.trim(),$('accountPassword').value);$('accountPassword').value='';}catch(e){error(e);}finally{busy=false;}});
-$('accountCreate').addEventListener('click',async()=>{
-  if(busy||!validId)return;if(!$('accountForm').reportValidity())return;busy=true;
-  try{const c=await createUserWithEmailAndPassword(auth,$('accountEmail').value.trim(),$('accountPassword').value);$('accountPassword').value='';await sendEmailVerification(c.user);say('Cuenta creada. Revisá tu correo para verificar el email.');}catch(e){error(e);}finally{busy=false;}
+$('accessLoginTab').addEventListener('click',()=>mode('login'));$('accessRegisterTab').addEventListener('click',()=>mode('register'));
+$('accountForm').addEventListener('submit',async e=>{
+  e.preventDefault();if(busy||!$('accountForm').reportValidity())return;
+  if(accessMode==='register'&&!validId){try{location.assign(registrationLink($('invitationLink').value.trim()));}catch(e){error(e);}return;}
+  if(accessMode==='register'&&$('accountPassword').value!==$('accountPasswordConfirm').value){say('Las contraseñas deben coincidir.');return;}
+  busy=true;$('accountLogin').disabled=true;$('accountCreate').disabled=true;
+  try{
+    if(accessMode==='register'){const c=await createUserWithEmailAndPassword(auth,$('accountEmail').value.trim(),$('accountPassword').value);await sendEmailVerification(c.user);say('Cuenta creada. Revisá tu correo para verificar el email.');}
+    else await signInWithEmailAndPassword(auth,$('accountEmail').value.trim(),$('accountPassword').value);
+    $('accountPassword').value='';$('accountPasswordConfirm').value='';
+  }catch(e){error(e);}finally{busy=false;$('accountLogin').disabled=false;$('accountCreate').disabled=false;}
 });
 $('accountVerify').addEventListener('click',async()=>{try{await sendEmailVerification(auth.currentUser);say('Verificación enviada. Revisá tu correo.');}catch(e){error(e);}});
 $('accountRefresh').addEventListener('click',async()=>{try{await auth.currentUser.reload();await auth.currentUser.getIdToken(true);await loadAccount(auth.currentUser);}catch(e){error(e);}});
-$('accountLogout').addEventListener('click',async()=>{++generation;resetAccess();form.reset();$('profileName').value='';await signOut(auth);});
+async function logout(){++generation;resetAccess();form.reset();$('profileName').value='';await signOut(auth);}
+$('accountLogout').addEventListener('click',logout);$('stripLogout').addEventListener('click',logout);
+$('editProfile').addEventListener('click',()=>{gate(true);$('profileEditor').hidden=false;accessHeading('TU PERFIL','Podés corregir tu nombre artístico antes de continuar.');say('');window.scrollTo(0,0);});
 $('profileSave').addEventListener('click',async()=>{
   if(busy||!validId)return;const user=auth.currentUser;if(!user?.emailVerified)return;busy=true;$('profileSave').disabled=true;fields.disabled=true;
   try{
