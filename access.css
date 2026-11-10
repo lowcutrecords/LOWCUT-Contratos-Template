@@ -1,5 +1,22 @@
 [hidden]{display:none!important}
-body,a,button,input,textarea,select,label{cursor:auto}.cursor{display:none}
+body{cursor:auto}.cursor{display:none}
+input,textarea{cursor:text}a,button,select,input[type=checkbox],label.check{cursor:pointer}
+button,a,input,select,textarea{transition:background-color .18s,color .18s,border-color .18s,box-shadow .18s,transform .12s}
+button:not(:disabled):hover,.hero-actions a:hover{transform:translateY(-2px);box-shadow:0 3px 0 rgba(127,127,127,.35)}
+button:not(:disabled):active,.hero-actions a:active{transform:translateY(1px);box-shadow:none}
+button:focus-visible,a:focus-visible{outline:2px solid currentColor;outline-offset:4px}
+input:disabled,textarea:disabled,select:disabled,button:disabled{cursor:not-allowed}
+.access-button:not(:disabled):hover{background:#333;color:#fff}.access-button.secondary:not(:disabled):hover{background:#111;color:#fff}
+.submit:not(:disabled):hover{background:#d7d5ce}.access-tabs button:not(:disabled):hover{background:#ddd;color:#111}
+.access-link:not(:disabled):hover{color:#111}.access-strip .access-link:not(:disabled):hover{color:#fff}
+.lang-btn:not(:disabled):hover{background:#ddd;color:#111}
+.is-busy:before,.loading-ring{content:'';display:inline-block;width:15px;height:15px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:accessSpin .7s linear infinite;flex-shrink:0}
+.is-busy{display:inline-flex;align-items:center;justify-content:center;gap:10px;cursor:wait!important;opacity:.75!important}
+.access-loading{display:flex;align-items:center;gap:12px;padding:18px 0;color:#666;font:700 11px 'Courier New',monospace;letter-spacing:1px}
+.access-card{animation:accessReveal .25s ease-out}.draft-save-note{color:#ccc;font-size:12px}
+@keyframes accessSpin{to{transform:rotate(360deg)}}
+@keyframes accessReveal{from{opacity:.4;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important}}
 body.access-pending .hero,body.access-pending .shell,body.access-pending footer,body.access-pending #accountStrip,body.access-pending .progress-wrap,body.access-pending .progress-label{display:none!important}
 .access-gate{min-height:calc(100vh - 72px);display:grid;grid-template-columns:1.05fr .95fr}
 .access-copy{padding:clamp(36px,7vw,100px);display:flex;flex-direction:column;justify-content:center;border-right:1px solid #292929;background:#050505;color:#fff}
@@ -25,5 +42,6 @@ body.access-pending .hero,body.access-pending .shell,body.access-pending footer,
 #accountMessage{font-size:12px;margin:18px 0 0;line-height:1.55;overflow-wrap:anywhere}
 .access-strip{max-width:1450px;margin:auto;padding:15px 26px;border-bottom:1px solid #333;display:flex;align-items:center;justify-content:space-between;gap:16px;color:#bbb;font-size:12px}
 .access-strip .access-link{color:#ddd}.access-strip-actions{display:flex;gap:18px;flex-wrap:wrap}.access-strip p{margin:0;line-height:1.5;overflow-wrap:anywhere}
+.access-strip p{min-width:0;flex:1}.access-button:disabled:not(.is-busy){cursor:not-allowed}
 @media(max-width:950px){.access-gate{grid-template-columns:1fr}.access-copy{border-right:0;border-bottom:1px solid #292929;min-height:38vh}.access-panel{padding:24px 16px}.access-copy h1{font-size:clamp(56px,12vw,90px)}.access-strip{align-items:flex-start;flex-direction:column}}
 
