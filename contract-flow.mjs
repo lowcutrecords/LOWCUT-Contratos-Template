@@ -6,6 +6,9 @@ import {registrationLink} from './invitation-link.mjs';
 import {mountProgress} from './progress.mjs';
 import {pickDraftData,DRAFT_FIELDS} from './draft-data.mjs';
 import {buttonBusy} from './interaction-ui.mjs';
+import {sendContractNotification} from './contract-notification.mjs';
+import {canCountersign,labelSignatureData} from './label-signature.mjs';
+import {dateKey,minimumReleaseDate,validReleaseDate} from './contract-dates.mjs';
 const app=initializeApp({apiKey:'AIzaSyDcLpCPu-3eNKtd3j8w51RdiqCvP6L8WlU',authDomain:'lowcut-artist-portal.firebaseapp.com',projectId:'lowcut-artist-portal',appId:'1:483516737605:web:0dc3012d3e1db7db39db2c'});
 const auth=getAuth(app),db=getFirestore(app),$=id=>document.getElementById(id);
 const form=$('contractForm'),fields=$('contractFields'),msg=$('accountMessage');
@@ -35,6 +38,14 @@ function mode(value){
 }
 function showContract(text,editableProfile=false){gate(false);$('contractAccessStatus').textContent=text;$('editProfile').hidden=!editableProfile;}
 function loading(value){$('accessLoading').hidden=!value;$('accountPanel').setAttribute('aria-busy',String(value));}
+function refreshDates(){
+  if(loaded?.status==='signed')return;
+  const minimum=minimumReleaseDate(new Date());$('signatureDate').value=dateKey();$('signatureDate').readOnly=true;
+  const release=form.elements.release_date;release.min=minimum;
+  const invalid=!!release.value&&!validReleaseDate(release.value,minimum);
+  release.setCustomValidity(invalid?'Elegí una fecha de lanzamiento desde el '+minimum.split('-').reverse().join('/')+'.':'');
+  release.setAttribute('aria-invalid',String(invalid));$('releaseDateHelp').textContent='Fecha mínima: '+minimum.split('-').reverse().join('/')+' · 14 días desde hoy. Se recalcula al volver a abrir el contrato.';
+}
 function editor(mode){
   editorMode=mode;fields.disabled=mode==='loading'||mode==='signed';
   for(const el of fields.querySelectorAll('input,select,textarea'))el.disabled=false;
@@ -44,7 +55,7 @@ function editor(mode){
   form.dispatchEvent(new CustomEvent('contract-mode',{detail:mode}));
 }
 function error(e){console.error(e.code||e.message);say(e.code==='permission-denied'?'No hay permiso para esta invitación. Verificá el email de tu cuenta; si coincide, LOWCUT debe revisar las reglas de Firebase.':e.code?.startsWith('auth/')?'No se pudo completar el acceso. Revisá tus datos o volvé a iniciar sesión.':e.message||'No se pudo completar la operación.');}
-function resetAccess(){editor('loading');profile=null;loaded=null;unsubscribe();unsubscribe=()=>{};}
+function resetAccess(){editor('loading');profile=null;loaded=null;$('labelActions').hidden=true;unsubscribe();unsubscribe=()=>{};}
 function prefill(p,a){
   const values=profileValues(auth.currentUser,p,a);$('profileName').value=values.name;
   for(const [key,value] of Object.entries({artist_name:values.name,main_artists:values.name,email:values.email}))form.elements[key].value=value;
@@ -60,12 +71,30 @@ function renderContract(c){
   }
   if(c.title)form.elements.release_title.value=c.title;
   for(const key of DRAFT_FIELDS){if(typeof c.draftData?.[key]==='string'&&c.draftData[key])form.elements[key].value=c.draftData[key];}
+  refreshDates();
   form.dispatchEvent(new Event('input',{bubbles:true}));
 }
 function renderSavedSignature(c){
   if(c.signature?.acceptedText){for(const el of document.querySelectorAll('[data-contract-lang]')){el.textContent=c.signature.acceptedText;el.style.whiteSpace='pre-wrap';}}
   for(const [name,value] of Object.entries(c.releaseData||{})){const el=form.elements[name];if(!el)continue;if(el.type==='checkbox')el.checked=value==='Sí';else el.value=value;}
   form.dispatchEvent(new Event('input',{bubbles:true}));
+}
+function renderLabelSignature(c,admin){
+  const signature=c.labelSignature;
+  $('labelSignatureDetails').textContent=signature
+    ?'Firma del sello: '+signature.name+' · '+(signature.signedAtTimestamp?.toDate?.().toLocaleString('es-AR')||'Registrada')
+    :'Firma del sello pendiente. Un administrador autorizado puede firmar después de la aceptación del artista.';
+  $('labelActions').hidden=!(admin&&c.status==='signed'&&c.signature?.acceptedText);
+  $('labelSigning').hidden=!canCountersign(c);
+  $('labelState').textContent=signature?'FIRMA DEL SELLO REGISTRADA':c.active===false?'El contrato está desactivado. Habilitalo desde el portal para agregar la firma del sello.':'FIRMA DEL SELLO PENDIENTE';
+}
+async function notifySavedContract(stage,statusElement){
+  statusElement.textContent='La firma está guardada. Enviando aviso por Formspree…';
+  try{
+    const saved=await getDoc(doc(db,'contracts',contractId));if(!saved.exists())throw Error('No se pudo leer el contrato guardado.');
+    await sendContractNotification(contractId,saved.data(),stage);
+    statusElement.textContent='La firma está guardada. Formspree aceptó el aviso por email.';return true;
+  }catch(e){statusElement.textContent='La firma está guardada, pero no se pudo enviar el aviso: '+e.message;return false;}
 }
 async function loadAccount(user){
   const token=++generation;resetAccess();gate(true);loading(true);$('accountForm').hidden=!!user;$('accessTabs').hidden=!!user;$('profilePanel').hidden=!user;$('accountLogout').hidden=!user;
@@ -94,7 +123,11 @@ async function loadAccount(user){
       form.elements.artist_name.value=assigned.name||'';form.elements.main_artists.value=assigned.name||'';form.elements.email.value=loaded.invitationEmail||assigned.email||'';
     }
     renderContract(loaded);
-    if(loaded.status==='signed'){renderSavedSignature(loaded);editor('signed');showContract('CONTRATO FIRMADO · '+(loaded.signedAt||'')+' · '+(loaded.signature?.name||'Firma registrada'));$('profileSave').disabled=true;return;}
+    renderLabelSignature(loaded,admin);
+    if(loaded.status==='signed'){
+      renderSavedSignature(loaded);editor('signed');showContract((loaded.labelSignature?'FIRMADO POR AMBAS PARTES':'FIRMADO POR EL ARTISTA · FIRMA DEL SELLO PENDIENTE')+' · '+(loaded.signedAt||''));$('profileSave').disabled=true;
+      unsubscribe=onSnapshot(doc(db,'contracts',contractId),s=>{if(token!==generation||!s.exists())return;loaded=s.data();renderLabelSignature(loaded,admin);},e=>error(e));return;
+    }
     if(admin){editor('draft');showContract('VISTA ADMIN · Completá los datos y usá «Guardar datos del contrato». La firma corresponde al artista.');$('profileSave').disabled=true;return;}
     if(!canSign(loaded,user.uid,user.email))throw Error('La invitación está desactivada o corresponde a otra cuenta.');
     if(!(profile&&artist?.active===true)){accessHeading('COMPLETÁ TU PERFIL','Tu nombre artístico se completará en el contrato y en el portal.');$('profileEditor').hidden=false;say('Guardá tu perfil para continuar.');}
@@ -144,6 +177,7 @@ $('profileSave').addEventListener('click',async()=>{
 });
 $('saveDraft').addEventListener('click',async()=>{
   if(busy||editorMode!=='draft')return;const user=auth.currentUser;if(!user)return;
+  refreshDates();if(form.elements.release_date.value&&!form.elements.release_date.reportValidity())return;
   const values=pickDraftData(Object.fromEntries(new FormData(form)));
   if(values.email&&!form.elements.email.validity.valid){form.elements.email.reportValidity();return;}
   busy=true;buttonBusy($('saveDraft'),true,'GUARDANDO DATOS…');
@@ -157,8 +191,27 @@ $('saveDraft').addEventListener('click',async()=>{
     say('DATOS GUARDADOS · El artista los verá al abrir su contrato.');
   }catch(e){error(e);}finally{busy=false;buttonBusy($('saveDraft'),false);}
 });
+$('labelSignatureForm').addEventListener('submit',async event=>{
+  event.preventDefault();if(busy||!event.currentTarget.reportValidity())return;
+  const user=auth.currentUser;if(!user?.emailVerified)return;
+  let data;try{data=labelSignatureData($('labelSignerName').value,user);}catch(e){$('notificationStatus').textContent=e.message;return;}
+  busy=true;buttonBusy($('labelSignButton'),true,'GUARDANDO FIRMA DEL SELLO…');$('notificationStatus').textContent='';
+  try{
+    await runTransaction(db,async tx=>{
+      const ref=doc(db,'contracts',contractId),snap=await tx.get(ref),p=await tx.get(doc(db,'users',user.uid));
+      if(!p.exists()||p.data().active!==true||p.data().role!=='admin')throw Error('Se requiere una cuenta admin activa.');
+      if(!snap.exists()||!canCountersign(snap.data()))throw Error('El contrato ya tiene firma del sello o no está habilitado para firmar.');
+      tx.update(ref,{labelSignature:{...data,signedAtTimestamp:serverTimestamp()},updatedAt:serverTimestamp()});
+    });
+    await loadAccount(user);await notifySavedContract('label',$('notificationStatus'));
+  }catch(e){$('notificationStatus').textContent=e.code==='permission-denied'?'Firebase todavía no permite la firma del sello. Hay que publicar las reglas actualizadas; la firma del artista se conserva.':e.message;}
+  finally{busy=false;buttonBusy($('labelSignButton'),false);}
+});
+$('resendNotification').addEventListener('click',async()=>{if(busy)return;busy=true;buttonBusy($('resendNotification'),true,'ENVIANDO AVISO…');try{await notifySavedContract('resend',$('notificationStatus'));}finally{busy=false;buttonBusy($('resendNotification'),false);}});
+$('retryArtistNotification').addEventListener('click',async()=>{if(busy)return;busy=true;buttonBusy($('retryArtistNotification'),true,'ENVIANDO AVISO…');try{const sent=await notifySavedContract('resend',$('successNotification'));$('retryArtistNotification').hidden=sent;}finally{busy=false;buttonBusy($('retryArtistNotification'),false);}});
 form.addEventListener('submit',async e=>{
   e.preventDefault();if(busy||fields.disabled||editorMode!=='artist')return;
+  refreshDates();
   if(!form.checkValidity()){form.reportValidity();return;}
   const user=auth.currentUser;if(!user?.emailVerified)return;
   const values=Object.fromEntries(new FormData(form));
@@ -181,7 +234,11 @@ form.addEventListener('submit',async e=>{
         signature:{name:values.electronic_signature,legalName:values.legal_name,email:user.email,contactEmail:values.email,language:lang,acceptedText,pageRevision:revision},releaseData:values,updatedAt:serverTimestamp()});
     });
     editor('signed');unsubscribe();document.querySelector('.shell').style.display='none';document.querySelector('.hero').style.display='none';$('success').style.display='grid';window.scrollTo(0,0);
+    const sent=await notifySavedContract('artist',$('successNotification'));$('retryArtistNotification').hidden=sent;
   }catch(e){$('formError').textContent=e.message||'No se pudo guardar la firma. Intentá nuevamente.';}
   finally{busy=false;buttonBusy($('submitBtn'),false);}
 });
+form.elements.release_date.addEventListener('input',refreshDates);
+window.addEventListener('focus',refreshDates);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshDates();});
 

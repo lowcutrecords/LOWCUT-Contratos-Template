@@ -1,13 +1,13 @@
 export function completionPercent(controls,reviewed,signed=false){
   if(signed)return 100;
-  const active=controls.filter(c=>!c.disabled);if(!active.length)return 0;
+  const active=controls.filter(c=>!c.disabled&&!c.automatic);if(!active.length)return 0;
   const done=active.filter(c=>reviewed.has(c.name)&&c.valid&&(c.type==='checkbox'?c.checked:String(c.value||'').trim()!==''));
   return Math.round(done.length/active.length*100);
 }
 export function mountProgress(form,bar,label){
   const reviewed=new Set();let signed=false;
   function render(){
-    const controls=[...form.querySelectorAll('[required]')].map(el=>({name:el.name,type:el.type,value:el.value,checked:el.checked,disabled:el.disabled,valid:el.validity.valid}));
+    const controls=[...form.querySelectorAll('[required]')].map(el=>({name:el.name,type:el.type,value:el.value,checked:el.checked,disabled:el.disabled,automatic:el.readOnly,valid:el.validity.valid}));
     const percent=completionPercent(controls,reviewed,signed);bar.style.width=percent+'%';bar.parentElement.setAttribute('aria-valuenow',String(percent));
     label.textContent=percent+'% '+(document.documentElement.lang==='en'?'COMPLETE':'COMPLETADO');
   }
