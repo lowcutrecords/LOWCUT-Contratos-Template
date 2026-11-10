@@ -93,7 +93,7 @@ async function notifySavedContract(stage,statusElement){
   try{
     const saved=await getDoc(doc(db,'contracts',contractId));if(!saved.exists())throw Error('No se pudo leer el contrato guardado.');
     await sendContractNotification(contractId,saved.data(),stage);
-    statusElement.textContent='La firma está guardada. Formspree aceptó el aviso por email.';return true;
+    statusElement.textContent='La firma está guardada. Aviso enviado correctamente.';return true;
   }catch(e){statusElement.textContent='La firma está guardada, pero no se pudo enviar el aviso: '+e.message;return false;}
 }
 async function loadAccount(user){
