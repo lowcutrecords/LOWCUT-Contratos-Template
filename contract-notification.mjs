@@ -5,6 +5,7 @@ export function notificationPayload(id,c,stage='artist'){
   const url=new URL('https://lowcutrecords.github.io/LOWCUT-Contratos-Template/');url.searchParams.set('contract',id);
   const type=stage==='label'?'FIRMA DEL SELLO':stage==='resend'?'REENVÍO DE AVISO':'FIRMA DEL ARTISTA';
   const lines=[type,'Contrato: '+id,'Enlace privado: '+url.href,''];
+  if(c.type==='band_agreement')lines.push('Tipo: Acuerdo de banda / exclusividad','Integrantes y autorización: disponibles en el contrato privado.');
   for(const [key,label] of Object.entries(labels))if(c.releaseData?.[key])lines.push(label+': '+c.releaseData[key]);
   lines.push('','Firma del artista: '+c.signature.name,'Email verificado: '+c.signature.email,'Fecha de firma del artista: '+(c.signedAt||''),'Revisión aceptada: '+c.signature.pageRevision);
   lines.push(c.labelSignature?'Firma del sello: '+c.labelSignature.name:'Firma del sello: PENDIENTE');

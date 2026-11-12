@@ -1,17 +1,20 @@
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js';
 import {getAuth,createUserWithEmailAndPassword,signInWithEmailAndPassword,onAuthStateChanged,signOut,sendEmailVerification} from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js';
 import {getFirestore,doc,getDoc,runTransaction,serverTimestamp,onSnapshot} from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js';
+import {mountAgreementForm} from './agreement-form.mjs';
+import {isBandAgreement} from './agreement-model.mjs';
 import {profileValues,profileDocuments,canSign} from './profile-model.mjs';
 import {registrationLink} from './invitation-link.mjs';
 import {mountProgress} from './progress.mjs';
-import {pickDraftData,DRAFT_FIELDS} from './draft-data.mjs';
+import {pickDraftData,DRAFT_FIELDS} from './draft-data.mjs?v=20261112-contracttypes1';
 import {buttonBusy} from './interaction-ui.mjs';
-import {sendContractNotification} from './contract-notification.mjs';
+import {sendContractNotification} from './contract-notification.mjs?v=20261112-contracttypes1';
 import {canCountersign,labelSignatureData} from './label-signature.mjs';
 import {dateKey,minimumReleaseDate,validReleaseDate} from './contract-dates.mjs';
 const app=initializeApp({apiKey:'AIzaSyDcLpCPu-3eNKtd3j8w51RdiqCvP6L8WlU',authDomain:'lowcut-artist-portal.firebaseapp.com',projectId:'lowcut-artist-portal',appId:'1:483516737605:web:0dc3012d3e1db7db39db2c'});
 const auth=getAuth(app),db=getFirestore(app),$=id=>document.getElementById(id);
 const form=$('contractForm'),fields=$('contractFields'),msg=$('accountMessage');
+const agreementForm=mountAgreementForm(form);
 mountProgress(form,$('progress'),$('progressLabel'));
 const contractId=new URLSearchParams(location.search).get('contract');
 const validId=contractId&&contractId.length<=200&&!contractId.includes('/');
@@ -41,14 +44,16 @@ function loading(value){$('accessLoading').hidden=!value;$('accountPanel').setAt
 function refreshDates(){
   if(loaded?.status==='signed')return;
   const minimum=minimumReleaseDate(new Date());$('signatureDate').value=dateKey();$('signatureDate').readOnly=true;
-  const release=form.elements.release_date;release.min=minimum;
+  const release=form.elements.release_date;
+  if(agreementForm.isBand()){release.setCustomValidity('');return;}
+  release.min=minimum;
   const invalid=!!release.value&&!validReleaseDate(release.value,minimum);
   release.setCustomValidity(invalid?'Elegí una fecha de lanzamiento desde el '+minimum.split('-').reverse().join('/')+'.':'');
   release.setAttribute('aria-invalid',String(invalid));$('releaseDateHelp').textContent='Fecha mínima: '+minimum.split('-').reverse().join('/')+' · 14 días desde hoy. Se recalcula al volver a abrir el contrato.';
 }
 function editor(mode){
-  editorMode=mode;fields.disabled=mode==='loading'||mode==='signed';
-  for(const el of fields.querySelectorAll('input,select,textarea'))el.disabled=false;
+  editorMode=mode;fields.disabled=mode==='loading';
+  for(const el of fields.querySelectorAll('input,select,textarea'))el.disabled=mode==='signed';
   for(const check of fields.querySelectorAll('.check')){check.hidden=mode==='draft';check.querySelector('input').disabled=mode!=='artist';}
   $('signature').hidden=mode==='draft';for(const input of $('signature').querySelectorAll('input'))input.disabled=mode!=='artist';
   $('submit').hidden=mode!=='artist';$('saveDraft').hidden=mode!=='draft';
@@ -62,6 +67,7 @@ function prefill(p,a){
   form.dispatchEvent(new Event('input',{bubbles:true}));
 }
 function renderContract(c){
+  if(isBandAgreement(c)&&(!c.pageContent?.es||!c.pageContent?.en))throw Error('LOWCUT debe completar el texto del acuerdo en ambos idiomas.');
   const custom=!!(c.pageContent?.es||c.pageContent?.en);
   document.querySelector('.terms').style.display=custom?'none':'';
   for(const el of document.querySelectorAll('[data-contract-lang]')){
@@ -70,11 +76,13 @@ function renderContract(c){
     else {el.innerHTML=defaults.get(lang);el.style.whiteSpace='';}
   }
   if(c.title)form.elements.release_title.value=c.title;
-  for(const key of DRAFT_FIELDS){if(typeof c.draftData?.[key]==='string'&&c.draftData[key])form.elements[key].value=c.draftData[key];}
+  agreementForm.configure(c,c.draftData||{});
+  for(const key of DRAFT_FIELDS){if(form.elements[key]&&typeof c.draftData?.[key]==='string'&&c.draftData[key])form.elements[key].value=c.draftData[key];}
   refreshDates();
   form.dispatchEvent(new Event('input',{bubbles:true}));
 }
 function renderSavedSignature(c){
+  agreementForm.configure(c,c.releaseData||{});
   if(c.signature?.acceptedText){for(const el of document.querySelectorAll('[data-contract-lang]')){el.textContent=c.signature.acceptedText;el.style.whiteSpace='pre-wrap';}}
   for(const [name,value] of Object.entries(c.releaseData||{})){const el=form.elements[name];if(!el)continue;if(el.type==='checkbox')el.checked=value==='Sí';else el.value=value;}
   form.dispatchEvent(new Event('input',{bubbles:true}));
@@ -178,7 +186,7 @@ $('profileSave').addEventListener('click',async()=>{
 $('saveDraft').addEventListener('click',async()=>{
   if(busy||editorMode!=='draft')return;const user=auth.currentUser;if(!user)return;
   refreshDates();if(form.elements.release_date.value&&!form.elements.release_date.reportValidity())return;
-  const values=pickDraftData(Object.fromEntries(new FormData(form)));
+  let values;try{values=pickDraftData(agreementForm.collect(Object.fromEntries(new FormData(form))));}catch(e){say(e.message);return;}
   if(values.email&&!form.elements.email.validity.valid){form.elements.email.reportValidity();return;}
   busy=true;buttonBusy($('saveDraft'),true,'GUARDANDO DATOS…');
   try{
@@ -186,7 +194,8 @@ $('saveDraft').addEventListener('click',async()=>{
       const ref=doc(db,'contracts',contractId),snap=await tx.get(ref),u=await tx.get(doc(db,'users',user.uid));
       if(!u.exists()||u.data().role!=='admin'||u.data().active!==true)throw Error('Se requiere acceso de administrador.');
       if(!snap.exists()||snap.data().status==='signed')throw Error('Este contrato ya no admite cambios. Recargá la página.');
-      tx.update(ref,{draftData:values,title:values.release_title||snap.data().title,updatedAt:serverTimestamp()});
+      if((snap.data().type||'release_contract')!==(loaded.type||'release_contract'))throw Error('El tipo de contrato cambió. Recargá la página.');
+      tx.update(ref,{draftData:values,title:agreementForm.isBand()?snap.data().title:(values.release_title||snap.data().title),updatedAt:serverTimestamp()});
     });
     say('DATOS GUARDADOS · El artista los verá al abrir su contrato.');
   }catch(e){error(e);}finally{busy=false;buttonBusy($('saveDraft'),false);}
@@ -214,7 +223,7 @@ form.addEventListener('submit',async e=>{
   refreshDates();
   if(!form.checkValidity()){form.reportValidity();return;}
   const user=auth.currentUser;if(!user?.emailVerified)return;
-  const values=Object.fromEntries(new FormData(form));
+  let values;try{values=agreementForm.collect(Object.fromEntries(new FormData(form)),true);}catch(e){$('formError').textContent=e.message;return;}
   if(values.legal_name.length>150||values.electronic_signature.length>150){$('formError').textContent='El nombre legal admite hasta 150 caracteres.';return;}
   if(values.electronic_signature.trim()!==values.legal_name.trim()){$('formError').textContent='La firma debe coincidir con tu nombre legal.';return;}
   const lang=document.documentElement.lang==='en'?'en':'es';
@@ -226,6 +235,8 @@ form.addEventListener('submit',async e=>{
       const ref=doc(db,'contracts',contractId),snap=await tx.get(ref),u=await tx.get(doc(db,'users',user.uid));
       if(!snap.exists()||!canSign(snap.data(),user.uid,user.email))throw Error('La invitación ya no está disponible.');
       const c=snap.data(),p=u.data();
+      if(isBandAgreement(c)!==agreementForm.isBand())throw Error('El tipo de contrato cambió. Recargá y revisá la nueva versión.');
+      if(isBandAgreement(c)&&(!c.pageContent?.es||!c.pageContent?.en))throw Error('El sello debe completar ambos idiomas del acuerdo antes de firmar.');
       if(!p||p.active!==true||p.role!=='artist')throw Error('Completá tu perfil antes de firmar.');
       const artist=await tx.get(doc(db,'artists',p.artistId));
       if(!artist.exists()||artist.data().active!==true)throw Error('Tu perfil artístico no está activo.');

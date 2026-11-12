@@ -33,3 +33,13 @@ El dominio final está pendiente de confirmar. No se incluye un archivo CNAME. C
 
 `node --test profile-model.test.mjs` valida el autocompletado, los IDs existentes y el rechazo de invitaciones incorrectas, cuentas desactivadas y emails sin verificar. Las pruebas de reglas y permisos están en el repositorio del portal. No se han probado registros ni firmas contra el Firebase de producción.
 
+# Acuerdos de banda
+
+La página carga el tipo desde el contrato privado, no desde un parámetro de URL editable. `band_agreement` activa integrantes y representación, sin datos de un lanzamiento. Los registros anteriores conservan el formulario por lanzamiento.
+
+Se requiere texto personalizado completo en español e inglés. La autorización PDF se guarda en el contrato privado (máximo 150 KiB); los avisos no envían su contenido ni los DNI de integrantes. El sello debe revisar la autorización antes de su aceptación.
+
+Coordinar la publicación con el portal y el fragmento de reglas de `LOWCUT-Records-Portal`. Las reglas anteriores que exigen `release_date` deben adaptarse antes de usar el nuevo tipo. Los contratos ya firmados mantienen la copia aceptada y el anexo en modo lectura.
+
+Pruebas de lógica: `node --test *.test.mjs`. Las pruebas de reglas se ejecutan desde el repositorio del portal, con un proyecto ficticio en emulador; no usar contratos reales para las pruebas.
+
